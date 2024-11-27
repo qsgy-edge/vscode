@@ -473,15 +473,8 @@ export function registerChatActions() {
 				menu: [
 					{
 						id: MenuId.ChatCommandCenter,
-						group: 'z_learn',
-						order: 1,
-						when: ChatContextKeys.Setup.installed
-					},
-					{
-						id: MenuId.ChatCommandCenter,
-						group: 'a_first',
-						order: 2,
-						when: ChatContextKeys.Setup.installed.toNegated()
+						group: 'z_end',
+						order: 1
 					}
 				]
 			});
@@ -572,7 +565,7 @@ export class ChatCommandCenterRendering implements IWorkbenchContribution {
 
 			const primaryAction = instantiationService.createInstance(MenuItemAction, {
 				id: chatExtensionInstalled ? CHAT_OPEN_ACTION_ID : 'workbench.action.chat.triggerSetup',
-				title: chatExtensionInstalled ? OpenChatGlobalAction.TITLE : localize2('triggerChatSetup', "Setup {0}...", defaultChat.name),
+				title: chatExtensionInstalled ? OpenChatGlobalAction.TITLE : localize2('triggerChatSetup', "Use AI features with {0}...", defaultChat.name),
 				icon: defaultChat.icon,
 			}, undefined, undefined, undefined, undefined);
 
