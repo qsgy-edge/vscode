@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { Iterable } from '../../../../base/common/iterator.js';
+import { isLinux, isMacintosh, isWindows } from '../../../../base/common/platform.js';
 import { ConfiguredInput } from './configurationResolver.js';
 
 /** A replacement found in the object, as ${name} or ${name:arg} */
@@ -45,6 +46,7 @@ interface IConfigurationResolverExpression<T> {
 type PropertyLocation = {
 	object: any;
 	propertyName: string | number;
+	replaceKeyName?: boolean;
 };
 
 export interface IResolvedValue {
@@ -78,14 +80,34 @@ export class ConfigurationResolverExpression<T> implements IConfigurationResolve
 		}
 	}
 
+	/**
+	 * Creates a new {@link ConfigurationResolverExpression} from an object.
+	 * Note that platform-specific keys (i.e. `windows`, `osx`, `linux`) are
+	 * applied during parsing.
+	 */
 	public static parse<T>(object: T): ConfigurationResolverExpression<T> {
 		if (object instanceof ConfigurationResolverExpression) {
 			return object;
 		}
 
 		const expr = new ConfigurationResolverExpression<T>(object);
+		expr.applyPlatformSpecificKeys();
 		expr.parseObject(expr.root);
 		return expr;
+	}
+
+	private applyPlatformSpecificKeys() {
+		const config = this.root as any; // already cloned by ctor, safe to change
+		const key = isWindows ? 'windows' : isMacintosh ? 'osx' : isLinux ? 'linux' : undefined;
+		if (key === undefined || !config || typeof config !== 'object' || !config.hasOwnProperty(key)) {
+			return;
+		}
+
+		Object.keys(config[key]).forEach(k => config[k] = config[key][k]);
+
+		delete config.windows;
+		delete config.osx;
+		delete config.linux;
 	}
 
 	private parseVariable(str: string, start: number): { replacement: Replacement; end: number } | undefined {
@@ -153,9 +175,15 @@ export class ConfigurationResolverExpression<T> implements IConfigurationResolve
 				this.parseObject(value);
 			}
 		}
+
+		// only after all values are marked for replacement, we can collect keys that have to be replaced
+		for (const [key] of Object.entries(obj)) {
+			this.parseString(obj, key, key, true);
+		}
+
 	}
 
-	private parseString(object: any, propertyName: string | number, value: string): void {
+	private parseString(object: any, propertyName: string | number, value: string, replaceKeyName?: boolean): void {
 		let pos = 0;
 		while (pos < value.length) {
 			const match = value.indexOf('${', pos);
@@ -165,7 +193,7 @@ export class ConfigurationResolverExpression<T> implements IConfigurationResolve
 			const parsed = this.parseVariable(value, match);
 			if (parsed) {
 				const locations = this.locations.get(parsed.replacement.id) || { locations: [], replacement: parsed.replacement };
-				locations.locations.push({ object, propertyName });
+				locations.locations.push({ object, propertyName, replaceKeyName });
 				this.locations.set(parsed.replacement.id, locations);
 				pos = parsed.end + 1;
 			} else {
@@ -193,9 +221,17 @@ export class ConfigurationResolverExpression<T> implements IConfigurationResolve
 		}
 
 		if (data.value !== undefined) {
-			for (const { object, propertyName } of location.locations || []) {
-				const newValue = object[propertyName].replaceAll(replacement.id, data.value);
-				object[propertyName] = newValue;
+			for (const { object, propertyName, replaceKeyName } of location.locations || []) {
+				if (replaceKeyName && typeof propertyName === 'string') {
+					// replace key
+					const value = object[propertyName];
+					const newValue = propertyName.replaceAll(replacement.id, data.value);
+					delete object[propertyName];
+					object[newValue] = value;
+				} else {
+					const newValue = object[propertyName].replaceAll(replacement.id, data.value);
+					object[propertyName] = newValue;
+				}
 			}
 		}
 
